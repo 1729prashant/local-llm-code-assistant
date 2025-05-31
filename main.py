@@ -9,6 +9,13 @@ if __name__ == '__main__':
 
     files = collect_files(project_path)
     prompt = build_prompt(files, task)
+    
+    # --- ADD THIS LINE ---
+    print("\n" + "="*30 + " PROMPT SENT TO LLM " + "="*30 + "\n")
+    print(prompt)
+    print("\n" + "="*70 + "\n")
+    # --- END ADDITION ---
+
     response = call_ollama(prompt)
 
     pretty_print(response)
