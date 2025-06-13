@@ -1,9 +1,11 @@
+# main.py
 import os
 import sys
 import argparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from functions.call_function import call_function
 
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -83,7 +85,7 @@ available_functions = types.Tool(
 )
 
 
-system_prompt_alternate = """You are a helpful coding assistant. Your primary goal is to assist the user by using the available tools whenever their request can be fulfilled by a tool.
+system_prompt_alternate_not_working = """You are a helpful coding assistant. Your primary goal is to assist the user by using the available tools whenever their request can be fulfilled by a tool.
 When calling functions, you only need to provide the parameters explicitly listed in the tool's description.
 Do NOT try to specify a 'working_directory'; the user's local script will handle that context.
 Always prioritize using a tool if it directly addresses the user's request.
@@ -134,35 +136,19 @@ if response.candidates: # Check if the LLM provided any response (it usually doe
             if part.text:
                 print('Response (Text): ', part.text) # LLM gave a text response
             elif part.function_call:
-                # Aha! The LLM brain wants the robot body to do something!
-                print('Response (Function Call Suggested):')
-                print(f"  Function Name: {part.function_call.name}") # Which tool does it want to use?
-                print(f"  Arguments from LLM: {part.function_call.args}") # What inputs does it suggest for that tool?
+                # The LLM suggested a function call, so we execute it
+                function_call_result = call_function(part.function_call, verbose=args.verbose)
 
-                # --- THE CRITICAL INJECTION POINT FOR 'WORKING_DIRECTORY' ---
-                # This is where your robot body takes over.
-                # The LLM asked for 'write_file(file_path="foo.txt", content="hello")',
-                # but your *actual* write_file function needs 'working_directory' too!
-                # Your robot body *knows* the current working directory.
-                
-                working_directory = os.getcwd() # Example: Get the real current working directory
-                # could also get it from a global setting, user input, etc.
+                # Validate the structure of the returned Content object
+                if not (function_call_result and
+                        function_call_result.parts and
+                        function_call_result.parts[0].function_response and
+                        function_call_result.parts[0].function_response.response):
+                    raise ValueError("Unexpected structure in function_call_result from call_function.")
 
-                # Now, combine the LLM's arguments with your internally managed 'working_directory'
-                # and call your *actual* local Python function.
-                # This part is pseudocode, you'd replace it with real calls:
-                # if part.function_call.name == "write_file":
-                #     # This maps the LLM's request to your actual Python function
-                #     write_file(current_working_dir,
-                #                part.function_call.args.get("file_path"),
-                #                part.function_call.args.get("content"))
-                # elif part.function_call.name == "get_file_content":
-                #     # get_file_content expects working_directory as the first argument
-                #     file_content = get_file_content(current_working_dir, part.function_call.args.get("file_path"))
-                #     # You'd then typically send this `file_content` back to the LLM as a ToolResponse
-                #     # in a subsequent API call, so the LLM knows the result of its action.
-                #     print(f"  (Robot executed '{part.function_call.name}' with '{current_working_dir}' + LLM args)")
-                # ... and so on for other functions
+                # If verbose, print the result of the function call
+                if args.verbose:
+                    print(f"-> {function_call_result.parts[0].function_response.response}")
 
             else:
                 print('Response part is not text or function call:', part)
